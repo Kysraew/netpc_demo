@@ -1,1 +1,1 @@
-### Prosta aplikacja webowa w C# i React
+### Simple web app in C# i React
