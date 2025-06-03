@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using backend.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace backend.Controllers
 {
@@ -27,6 +28,8 @@ namespace backend.Controllers
     }
 
     [HttpPost]
+    [Authorize]
+
     public async Task SaveContactInfo([FromBody] ContactInfo contactInfo)
     {
       await _netpcDbContext.ContactInfos.AddAsync(contactInfo);
@@ -34,6 +37,8 @@ namespace backend.Controllers
     }
 
     [HttpPut]
+    [Authorize]
+
     public async Task UpdateContactInfo([FromBody] ContactInfo contactInfo)
     {
       _netpcDbContext.Update(contactInfo);
@@ -41,6 +46,8 @@ namespace backend.Controllers
     }
 
     [HttpDelete("{id}")]
+    [Authorize]
+
     public async Task DeleteProduct(long id)
     {
       _netpcDbContext.ContactInfos.Remove(new ContactInfo()

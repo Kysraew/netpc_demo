@@ -17,6 +17,5 @@ namespace backend.Models
 
     public long CategoryId { get; set; }
     public virtual Category Category { get; set; } = null!;
-
   }
 }

@@ -6,21 +6,34 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+string frontendOrigins = "frontend_origins";
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(name: frontendOrigins,
+                      policy =>
+                      {
+                          policy.WithOrigins("http://localhost:5173")
+                                .AllowAnyHeader()
+                                .AllowAnyMethod();
+                      });
+});
+
+
 builder.Services.AddDbContext<NetpcDbContext>(opts =>
 {
     opts.UseNpgsql(
-        builder.Configuration["ConnectionStrings:NetpcDbConnection"]);
+        builder.Configuration.GetConnectionString("NetpcDbConnection"));
 });
 
 builder.Services.AddDbContext<IdentityContext>(opts =>
-    opts.UseNpgsql(builder.Configuration[
-        "ConnectionStrings:IdentityConnection"]));
-builder.Services.AddIdentity<IdentityUser, IdentityRole>()
-    .AddEntityFrameworkStores<IdentityContext>();
+    opts.UseNpgsql(builder.Configuration.GetConnectionString("IdentityDbConnection")));
 
 builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
     {
@@ -34,8 +47,11 @@ builder.Services.AddIdentity<IdentityUser, IdentityRole>(options =>
     .AddEntityFrameworkStores<IdentityContext>()
     .AddDefaultTokenProviders();
 
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -44,7 +60,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["JWT:ValidAudience"],
+            ValidIssuer = builder.Configuration["JWT:ValidIssuer"],
             ValidAudience = builder.Configuration["JWT:ValidAudience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["JWT:Secret"]))
         };
@@ -52,53 +68,60 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 
-
 builder.Services.AddControllers().AddJsonOptions(x =>
-   x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles); ;
-
+   x.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles);
 
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
-    try
+    var logger = services.GetRequiredService<ILogger<Program>>();
+
+    var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
+    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+
+    string adminRoleName = "Admin";
+    string adminUserName = "admin";
+    string adminPassword = "Password123!";
+    string adminEmail = "admin@example.com";
+
+    if (!await roleManager.RoleExistsAsync(adminRoleName))
     {
-        var userManager = services.GetRequiredService<UserManager<IdentityUser>>();
-        var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
+        await roleManager.CreateAsync(new IdentityRole(adminRoleName));
+    }
 
-        roleManager.CreateAsync(new IdentityRole("Admin")).GetAwaiter().GetResult();
-
-        var adminEmail = "admin@example.com";
-        var adminUserName = "admin";
-        var adminPassword = "Password123!";
-
-        var adminUser = new IdentityUser
+    var adminUser = await userManager.FindByNameAsync(adminUserName);
+    if (adminUser == null)
+    {
+        adminUser = new IdentityUser
         {
             UserName = adminUserName,
             Email = adminEmail,
             EmailConfirmed = true
         };
-
-        var creationResult = userManager.CreateAsync(adminUser, adminPassword).GetAwaiter().GetResult();
+        var creationResult = await userManager.CreateAsync(adminUser, adminPassword);
         if (creationResult.Succeeded)
         {
-            userManager.AddToRoleAsync(adminUser, "Admin").GetAwaiter().GetResult();
+            await userManager.AddToRoleAsync(adminUser, adminRoleName);
         }
     }
-    catch (Exception ex)
+    else
     {
-        Console.WriteLine($"An error occurred while seeding the database: {ex.Message}");
+        if (!await userManager.IsInRoleAsync(adminUser, adminRoleName))
+        {
+            await userManager.AddToRoleAsync(adminUser, adminRoleName);
+        }
     }
 }
 
+//app.UseHttpsRedirection();
 
-app.MapControllers();
-app.UseHttpsRedirection();
+app.UseCors(frontendOrigins);
 
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapControllers();
 
 app.Run();
-

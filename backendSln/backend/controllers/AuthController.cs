@@ -8,14 +8,11 @@ using Microsoft.AspNetCore.Identity;
 
 namespace backend.Controllers
 {
-
   [Route("api/[controller]")]
   public class AuthController : ControllerBase
   {
-
     private readonly UserManager<IdentityUser> _userManager;
     private readonly IConfiguration _configuration;
-
 
     public AuthController(UserManager<IdentityUser> userManager, IConfiguration configuration)
     {
@@ -41,20 +38,20 @@ namespace backend.Controllers
       return Unauthorized("Wrong username or password.");
     }
 
-
     private async Task<string> GenerateJwtToken(IdentityUser user)
     {
       var jwtSettings = _configuration.GetSection("Jwt");
-      var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Key"]));
+      // Użyj klucza "Secret" z appsettings.json
+      var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Secret"]));
       var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
 
       var claims = new List<Claim>
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, user.Id), // Użyj user.Id jako subject
-                new Claim(JwtRegisteredClaimNames.NameId, user.UserName), // Lub ClaimTypes.NameIdentifier
-                new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            };
+      {
+        new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+        new Claim(JwtRegisteredClaimNames.NameId, user.UserName),
+        new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+      };
 
       var userRoles = await _userManager.GetRolesAsync(user);
       foreach (var role in userRoles)
@@ -66,8 +63,8 @@ namespace backend.Controllers
       {
         Subject = new ClaimsIdentity(claims),
         Expires = DateTime.UtcNow.AddMinutes(Convert.ToDouble(jwtSettings["DurationInMinutes"])),
-        Issuer = jwtSettings["Issuer"],
-        Audience = jwtSettings["Audience"],
+        Issuer = jwtSettings["ValidIssuer"],
+        Audience = jwtSettings["ValidAudience"],
         SigningCredentials = credentials
       };
 
